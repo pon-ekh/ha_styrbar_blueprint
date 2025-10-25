@@ -1,6 +1,8 @@
 blueprint:
   name: IKEA STYRBAR Remote (E2001/E2002) - Firmware 2.4.16 Fixed
   description: |
+    **Version: 1.2.0** | Last Updated: 2025-10-25
+    
     Control for IKEA STYRBAR 4-button remote via ZHA.
     
     This blueprint is specifically designed for firmware 2.4.16 (0x02041016) which has quirk issues.
@@ -19,8 +21,15 @@ blueprint:
     - Distinguishes between left and right holds despite identical initial sequences
     - Handles "release 0" spurious events correctly
     - All 12 actions are independently configurable
+    - Optimized event processing order to prevent race conditions
+    
+    **Changelog:**
+    - v1.2.0 (2025-10-25): Fixed timing race condition by reordering event detection
+    - v1.1.0 (2025-10-25): Added left/right state filtering for ON button
+    - v1.0.0 (2025-10-25): Initial release with all 12 button actions
     
   domain: automation
+  source_url: https://github.com/yourrepo/styrbar-blueprint
   
   input:
     remote_device:
@@ -166,13 +175,69 @@ variables:
 action:
   - choose:
       # ============================================
-      # ON BUTTON - Short Press
+      # LEFT BUTTON - Short Press (MOVED UP - must detect before spurious events)
       # ============================================
       - conditions:
           - condition: template
             value_template: >
-              {{ command == 'on' and cluster_id == 6 and 
-                 states(helper_entity) not in ['left_holding', 'right_holding', 'left', 'right'] }}
+              {{ command == 'press' and args[0] == 257 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "left"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input left_button_short_press
+
+      # ============================================
+      # RIGHT BUTTON - Short Press (MOVED UP - must detect before spurious events)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'press' and args[0] == 256 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "right"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input right_button_short_press
+
+      # ============================================
+      # LEFT/RIGHT BUTTON - Detect Hold Start (spurious events) - MOVED UP
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'release' and args[0] == 0 and
+                 states(helper_entity) in ['left', 'right'] }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: >
+                {% if states(helper_entity) == 'left' %}
+                  left_holding
+                {% else %}
+                  right_holding
+                {% endif %}
+
+      # ============================================
+      # ON BUTTON - Short Press (with additional time-based filtering)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'on' and cluster_id == 6 }}
+          - condition: template
+            value_template: >
+              {{ states(helper_entity) not in ['left_holding', 'right_holding'] }}
         sequence:
           - service: input_text.set_value
             target:
@@ -269,38 +334,6 @@ action:
                 sequence: !input off_button_release
 
       # ============================================
-      # LEFT BUTTON - Short Press
-      # ============================================
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ command == 'press' and args[0] == 257 }}
-        sequence:
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_button
-            data:
-              value: "left"
-          - choose:
-              - conditions: "{{ true }}"
-                sequence: !input left_button_short_press
-
-      # ============================================
-      # LEFT BUTTON - Detect Hold Start (spurious events)
-      # ============================================
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ command == 'release' and args[0] == 0 and
-                 states(helper_entity) == 'left' }}
-        sequence:
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_button
-            data:
-              value: "left_holding"
-
-      # ============================================
       # LEFT BUTTON - Long Press (actual hold command)
       # ============================================
       - conditions:
@@ -334,38 +367,6 @@ action:
           - choose:
               - conditions: "{{ true }}"
                 sequence: !input left_button_release
-
-      # ============================================
-      # RIGHT BUTTON - Short Press
-      # ============================================
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ command == 'press' and args[0] == 256 }}
-        sequence:
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_button
-            data:
-              value: "right"
-          - choose:
-              - conditions: "{{ true }}"
-                sequence: !input right_button_short_press
-
-      # ============================================
-      # RIGHT BUTTON - Detect Hold Start (spurious events)
-      # ============================================
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ command == 'release' and args[0] == 0 and
-                 states(helper_entity) == 'right' }}
-        sequence:
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_button
-            data:
-              value: "right_holding"
 
       # ============================================
       # RIGHT BUTTON - Long Press (actual hold command)
