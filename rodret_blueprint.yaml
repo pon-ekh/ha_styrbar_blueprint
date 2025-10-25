@@ -24,7 +24,6 @@ blueprint:
         device:
           integration: zha
           manufacturer: IKEA of Sweden
-          model: RODRET wireless dimmer
           multiple: false
     
     helper_state:
