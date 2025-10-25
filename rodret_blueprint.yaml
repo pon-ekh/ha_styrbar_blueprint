@@ -1,0 +1,306 @@
+blueprint:
+  name: IKEA RODRET Remote - Enhanced with Double Click
+  description: |
+    **Version: 1.0.0** | Last Updated: 2025-10-25
+    
+    IKEA RODRET 2-button remote via ZHA with enhanced features:
+    - Single press ON/OFF
+    - Hold to dim up/down smoothly
+    - Double-click ON button for instant 100% brightness
+    - Configurable double-click timeout
+    
+    **Requirements:**
+    - One text helper (Settings > Helpers > Text, max length: 30):
+      Tracks double-click state and button holds
+    
+  domain: automation
+  source_url: https://github.com/pon-ekh/ha_styrbar_blueprint/blob/main/rodret_blueprint.yaml
+
+  input:
+    remote_device:
+      name: RODRET Remote
+      description: Select your IKEA RODRET remote control
+      selector:
+        device:
+          integration: zha
+          manufacturer: IKEA of Sweden
+          model: RODRET wireless dimmer/power switch
+          multiple: false
+    
+    helper_state:
+      name: Helper - State Tracker
+      description: |
+        Text helper to track double-click state and button holds
+        Create: Settings > Helpers > Text (max length: 30)
+      selector:
+        entity:
+          domain: input_text
+          multiple: false
+
+    # ========================================
+    # DOUBLE CLICK SETTINGS
+    # ========================================
+    enable_double_click:
+      name: Enable Double Click ON for 100%
+      description: Enable double-click ON button to set lights to 100% brightness
+      default: true
+      selector:
+        boolean: {}
+    
+    double_click_timeout:
+      name: Double Click Timeout
+      description: Maximum time between clicks to register as double-click
+      default: 500
+      selector:
+        number:
+          min: 200
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+
+    # ========================================
+    # ON BUTTON ACTIONS
+    # ========================================
+    on_button_short_press:
+      name: ON Button - Short Press (Single Click)
+      description: Action to run when ON button is pressed once
+      default: []
+      selector:
+        action: {}
+    
+    on_button_double_press:
+      name: ON Button - Double Click
+      description: Action to run when ON button is double-clicked (e.g., set to 100%)
+      default: []
+      selector:
+        action: {}
+    
+    on_button_long_press:
+      name: ON Button - Long Press (Hold Start)
+      description: Action to run when ON button is held down (before continuous dimming)
+      default: []
+      selector:
+        action: {}
+    
+    on_button_hold_loop:
+      name: ON Button - Hold Loop (Continuous)
+      description: |
+        Action to repeat continuously while ON button is held.
+        Useful for smooth dimming up.
+      default: []
+      selector:
+        action: {}
+    
+    on_button_hold_loop_delay:
+      name: ON Button - Hold Loop Delay
+      description: Delay between each loop iteration (in milliseconds)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+    
+    # ========================================
+    # OFF BUTTON ACTIONS
+    # ========================================
+    off_button_short_press:
+      name: OFF Button - Short Press
+      description: Action to run when OFF button is pressed briefly
+      default: []
+      selector:
+        action: {}
+    
+    off_button_long_press:
+      name: OFF Button - Long Press (Hold Start)
+      description: Action to run when OFF button is held down (before continuous dimming)
+      default: []
+      selector:
+        action: {}
+    
+    off_button_hold_loop:
+      name: OFF Button - Hold Loop (Continuous)
+      description: |
+        Action to repeat continuously while OFF button is held.
+        Useful for smooth dimming down.
+      default: []
+      selector:
+        action: {}
+    
+    off_button_hold_loop_delay:
+      name: OFF Button - Hold Loop Delay
+      description: Delay between each loop iteration (in milliseconds)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+
+# ================================================
+# AUTOMATION LOGIC
+# ================================================
+mode: restart
+max_exceeded: silent
+
+variables:
+  helper_state: !input helper_state
+  enable_double_click: !input enable_double_click
+  double_click_timeout_ms: !input double_click_timeout
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote_device
+
+action:
+  - variables:
+      command: "{{ trigger.event.data.command }}"
+      args: "{{ trigger.event.data.args }}"
+      current_state: "{{ states(helper_state) }}"
+
+  - choose:
+      # ============================================
+      # ON BUTTON - Short Press (with double-click detection)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'on' }}"
+        sequence:
+          - choose:
+              # Double-click detected
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ enable_double_click and current_state == 'on_waiting' }}
+                sequence:
+                  # Clear waiting state
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_state
+                    data:
+                      value: ""
+                  # Execute double-click action
+                  - choose:
+                      - conditions: "{{ true }}"
+                        sequence: !input on_button_double_press
+            
+            # First click - start waiting for potential double-click
+            default:
+              - service: input_text.set_value
+                target:
+                  entity_id: !input helper_state
+                data:
+                  value: "on_waiting"
+              # Wait for potential second click
+              - delay:
+                  milliseconds: "{{ double_click_timeout_ms }}"
+              # If still waiting after timeout, execute single press
+              - if:
+                  - condition: template
+                    value_template: >
+                      {{ states(helper_state) == 'on_waiting' }}
+                then:
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_state
+                    data:
+                      value: ""
+                  - choose:
+                      - conditions: "{{ true }}"
+                        sequence: !input on_button_short_press
+
+      # ============================================
+      # ON BUTTON - Long Press (Hold)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'move_with_on_off' and args|length > 0 }}
+        sequence:
+          # Clear any double-click waiting state
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_state
+            data:
+              value: "on_holding"
+          # Trigger initial hold action
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input on_button_long_press
+          # Start continuous loop
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ states(helper_state) == 'on_holding' }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ true }}"
+                      sequence: !input on_button_hold_loop
+                - delay:
+                    milliseconds: !input on_button_hold_loop_delay
+
+      # ============================================
+      # OFF BUTTON - Short Press
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'off' }}"
+        sequence:
+          # Clear any double-click waiting state
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_state
+            data:
+              value: ""
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input off_button_short_press
+
+      # ============================================
+      # OFF BUTTON - Long Press (Hold)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'move' and args|length > 0 }}
+        sequence:
+          # Clear any double-click waiting state
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_state
+            data:
+              value: "off_holding"
+          # Trigger initial hold action
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input off_button_long_press
+          # Start continuous loop
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ states(helper_state) == 'off_holding' }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ true }}"
+                      sequence: !input off_button_hold_loop
+                - delay:
+                    milliseconds: !input off_button_hold_loop_delay
+
+      # ============================================
+      # STOP DIMMING (Release after hold)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command in ['stop_with_on_off', 'stop'] }}
+        sequence:
+          # Clear holding state
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_state
+            data:
+              value: ""
