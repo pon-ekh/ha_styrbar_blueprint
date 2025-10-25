@@ -180,17 +180,22 @@ action:
   # Process based on command type FIRST, before updating trackers
   - choose:
       # ============================================
-      # IGNORE SPURIOUS EVENTS - Do nothing for these
+      # IGNORE SPURIOUS RECALL EVENTS - Track but don't trigger actions
       # ============================================
       - conditions:
           - condition: template
             value_template: >
               {{ command == 'recall' }}
-        sequence: []
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
       
       # ============================================
       # ON BUTTON - Short Press
-      # Filter: Only if last command wasn't "release" from left/right
+      # Filter: Ignore if last_command is "spurious_sequence" marker
       # ============================================
       - conditions:
           - condition: template
@@ -198,7 +203,7 @@ action:
               {{ command == 'on' and cluster_id == 6 }}
           - condition: template
             value_template: >
-              {{ not (last_command == 'release' and last_button in ['left', 'right']) }}
+              {{ last_command != 'spurious_sequence' }}
         sequence:
           - service: input_text.set_value
             target:
@@ -451,19 +456,19 @@ action:
                 sequence: !input right_button_long_press
 
       # ============================================
-      # SPURIOUS RELEASE 0 - Just update state tracking
+      # SPURIOUS RELEASE 0 - Mark that next "on" should be ignored
       # ============================================
       - conditions:
           - condition: template
             value_template: >
               {{ command == 'release' and args|length > 0 and args[0] == 0 }}
         sequence:
-          # Update command tracker first
+          # Set command to "spurious_sequence" to mark we're in left/right hold
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_command
             data:
-              value: "{{ command }}"
+              value: "spurious_sequence"
           # Update to holding state based on which button was last pressed
           - service: input_text.set_value
             target:
