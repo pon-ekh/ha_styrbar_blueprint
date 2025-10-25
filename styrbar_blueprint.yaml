@@ -28,7 +28,7 @@ blueprint:
     - v1.0.0 (2025-10-25): Initial release
     
   domain: automation
-  source_url: https://github.com/yourrepo/styrbar-blueprint
+  source_url: https://github.com/pon-ekh/ha_styrbar_blueprint/blob/main/styrbar_blueprint.yaml
 
   input:
     remote_device:
@@ -177,14 +177,7 @@ variables:
   last_command: "{{ states(helper_command) }}"
 
 action:
-  # First, always update the command tracker
-  - service: input_text.set_value
-    target:
-      entity_id: !input helper_last_command
-    data:
-      value: "{{ command }}"
-  
-  # Now process based on command type
+  # Process based on command type FIRST, before updating trackers
   - choose:
       # ============================================
       # IGNORE SPURIOUS EVENTS - Do nothing for these
@@ -197,7 +190,7 @@ action:
       
       # ============================================
       # ON BUTTON - Short Press
-      # Filter: Only if last command wasn't "release" with arg 0
+      # Filter: Only if last command wasn't "release" from left/right
       # ============================================
       - conditions:
           - condition: template
@@ -207,6 +200,11 @@ action:
             value_template: >
               {{ not (last_command == 'release' and last_button in ['left', 'right']) }}
         sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_button
@@ -225,6 +223,11 @@ action:
         sequence:
           - service: input_text.set_value
             target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
+          - service: input_text.set_value
+            target:
               entity_id: !input helper_last_button
             data:
               value: "on_holding"
@@ -240,6 +243,11 @@ action:
             value_template: >
               {{ command == 'stop' }}
         sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
           - choose:
               # ON button release
               - conditions:
@@ -278,6 +286,11 @@ action:
         sequence:
           - service: input_text.set_value
             target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
+          - service: input_text.set_value
+            target:
               entity_id: !input helper_last_button
             data:
               value: "off"
@@ -293,6 +306,11 @@ action:
             value_template: >
               {{ command == 'move' and args|length > 0 }}
         sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_button
@@ -312,6 +330,11 @@ action:
         sequence:
           - service: input_text.set_value
             target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
+          - service: input_text.set_value
+            target:
               entity_id: !input helper_last_button
             data:
               value: "left"
@@ -329,6 +352,11 @@ action:
         sequence:
           - service: input_text.set_value
             target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
+          - service: input_text.set_value
+            target:
               entity_id: !input helper_last_button
             data:
               value: "left_holding"
@@ -344,6 +372,11 @@ action:
             value_template: >
               {{ command == 'release' and args|length > 0 and args[0] != 0 }}
         sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
           - choose:
               # LEFT button release
               - conditions:
@@ -383,6 +416,11 @@ action:
         sequence:
           - service: input_text.set_value
             target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
+          - service: input_text.set_value
+            target:
               entity_id: !input helper_last_button
             data:
               value: "right"
@@ -400,6 +438,11 @@ action:
         sequence:
           - service: input_text.set_value
             target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
+          - service: input_text.set_value
+            target:
               entity_id: !input helper_last_button
             data:
               value: "right_holding"
@@ -415,6 +458,12 @@ action:
             value_template: >
               {{ command == 'release' and args|length > 0 and args[0] == 0 }}
         sequence:
+          # Update command tracker first
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_command
+            data:
+              value: "{{ command }}"
           # Update to holding state based on which button was last pressed
           - service: input_text.set_value
             target:
