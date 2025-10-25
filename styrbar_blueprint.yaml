@@ -172,7 +172,7 @@ action:
           - condition: template
             value_template: >
               {{ command == 'on' and cluster_id == 6 and 
-                 states(helper_entity) not in ['left_holding', 'right_holding'] }}
+                 states(helper_entity) not in ['left_holding', 'right_holding', 'left', 'right'] }}
         sequence:
           - service: input_text.set_value
             target:
