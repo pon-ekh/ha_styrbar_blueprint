@@ -1,7 +1,7 @@
 blueprint:
   name: IKEA STYRBAR Remote (E2001/E2002) - Firmware 2.4.16 Fixed v2
   description: |
-    **Version: 2.0.0** | Last Updated: 2025-10-25
+    **Version: 2.1.0** | Last Updated: 2025-10-25
     
     Completely redesigned approach for IKEA STYRBAR 4-button remote via ZHA.
     
@@ -22,6 +22,7 @@ blueprint:
       2. Last command (tracks the actual command received)
     
     **Changelog:**
+    - v2.1.0 (2025-10-25): Added continuous hold loop actions for smooth dimming/continuous actions
     - v2.0.0 (2025-10-25): Complete redesign using event patterns instead of state checks
     - v1.2.0 (2025-10-25): Fixed timing race condition by reordering
     - v1.1.0 (2025-10-25): Added left/right state filtering
@@ -78,6 +79,26 @@ blueprint:
       selector:
         action: {}
     
+    on_button_hold_loop:
+      name: ON Button - Hold Loop (Continuous)
+      description: |
+        Action to repeat continuously while ON button is held.
+        Useful for smooth dimming up. Leave empty if not needed.
+      default: []
+      selector:
+        action: {}
+    
+    on_button_hold_loop_delay:
+      name: ON Button - Hold Loop Delay
+      description: Delay between each loop iteration (in milliseconds)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+    
     on_button_release:
       name: ON Button - Release (After Hold)
       description: Action to run when ON button is released after holding
@@ -101,6 +122,26 @@ blueprint:
       default: []
       selector:
         action: {}
+    
+    off_button_hold_loop:
+      name: OFF Button - Hold Loop (Continuous)
+      description: |
+        Action to repeat continuously while OFF button is held.
+        Useful for smooth dimming down. Leave empty if not needed.
+      default: []
+      selector:
+        action: {}
+    
+    off_button_hold_loop_delay:
+      name: OFF Button - Hold Loop Delay
+      description: Delay between each loop iteration (in milliseconds)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
     
     off_button_release:
       name: OFF Button - Release (After Hold)
@@ -126,6 +167,26 @@ blueprint:
       selector:
         action: {}
     
+    left_button_hold_loop:
+      name: LEFT Button - Hold Loop (Continuous)
+      description: |
+        Action to repeat continuously while LEFT button is held.
+        Leave empty if not needed.
+      default: []
+      selector:
+        action: {}
+    
+    left_button_hold_loop_delay:
+      name: LEFT Button - Hold Loop Delay
+      description: Delay between each loop iteration (in milliseconds)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+    
     left_button_release:
       name: LEFT Button - Release (After Hold)
       description: Action to run when LEFT button is released after holding
@@ -150,6 +211,26 @@ blueprint:
       selector:
         action: {}
     
+    right_button_hold_loop:
+      name: RIGHT Button - Hold Loop (Continuous)
+      description: |
+        Action to repeat continuously while RIGHT button is held.
+        Leave empty if not needed.
+      default: []
+      selector:
+        action: {}
+    
+    right_button_hold_loop_delay:
+      name: RIGHT Button - Hold Loop Delay
+      description: Delay between each loop iteration (in milliseconds)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+    
     right_button_release:
       name: RIGHT Button - Release (After Hold)
       description: Action to run when RIGHT button is released after holding
@@ -157,9 +238,8 @@ blueprint:
       selector:
         action: {}
 
-mode: queued
+mode: restart
 max_exceeded: silent
-max: 10
 
 trigger:
   - platform: event
@@ -236,9 +316,21 @@ action:
               entity_id: !input helper_last_button
             data:
               value: "on_holding"
+          # Trigger initial hold action
           - choose:
               - conditions: "{{ true }}"
                 sequence: !input on_button_long_press
+          # Start continuous loop if configured
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ states(helper_button) == 'on_holding' }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ true }}"
+                      sequence: !input on_button_hold_loop
+                - delay:
+                    milliseconds: !input on_button_hold_loop_delay
 
       # ============================================
       # ON/OFF BUTTON - Release after Hold
@@ -321,9 +413,21 @@ action:
               entity_id: !input helper_last_button
             data:
               value: "off_holding"
+          # Trigger initial hold action
           - choose:
               - conditions: "{{ true }}"
                 sequence: !input off_button_long_press
+          # Start continuous loop if configured
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ states(helper_button) == 'off_holding' }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ true }}"
+                      sequence: !input off_button_hold_loop
+                - delay:
+                    milliseconds: !input off_button_hold_loop_delay
 
       # ============================================
       # LEFT BUTTON - Short Press
@@ -365,9 +469,21 @@ action:
               entity_id: !input helper_last_button
             data:
               value: "left_holding"
+          # Trigger initial hold action
           - choose:
               - conditions: "{{ true }}"
                 sequence: !input left_button_long_press
+          # Start continuous loop if configured
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ states(helper_button) == 'left_holding' }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ true }}"
+                      sequence: !input left_button_hold_loop
+                - delay:
+                    milliseconds: !input left_button_hold_loop_delay
 
       # ============================================
       # LEFT/RIGHT BUTTON - Release after Hold
@@ -451,9 +567,21 @@ action:
               entity_id: !input helper_last_button
             data:
               value: "right_holding"
+          # Trigger initial hold action
           - choose:
               - conditions: "{{ true }}"
                 sequence: !input right_button_long_press
+          # Start continuous loop if configured
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ states(helper_button) == 'right_holding' }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ true }}"
+                      sequence: !input right_button_hold_loop
+                - delay:
+                    milliseconds: !input right_button_hold_loop_delay
 
       # ============================================
       # SPURIOUS RELEASE 0 - Mark that next "on" should be ignored
