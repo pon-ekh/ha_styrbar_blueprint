@@ -1,0 +1,403 @@
+blueprint:
+  name: IKEA STYRBAR Remote (E2001/E2002) - Firmware 2.4.16 Fixed
+  description: |
+    Control for IKEA STYRBAR 4-button remote via ZHA.
+    
+    This blueprint is specifically designed for firmware 2.4.16 (0x02041016) which has quirk issues.
+    It properly filters spurious events and handles all 12 button actions:
+    - ON: short press, long press (hold), release
+    - OFF: short press, long press (hold), release  
+    - LEFT: short press, long press (hold), release
+    - RIGHT: short press, long press (hold), release
+    
+    **Requirements:**
+    - A text helper must be created first (Settings > Helpers > Text)
+    - Recommended name: "STYRBAR Last Button" (max length: 20)
+    
+    **Features:**
+    - Filters spurious "on" events from left/right button holds
+    - Distinguishes between left and right holds despite identical initial sequences
+    - Handles "release 0" spurious events correctly
+    - All 12 actions are independently configurable
+    
+  domain: automation
+  
+  input:
+    remote_device:
+      name: STYRBAR Remote
+      description: Select your IKEA STYRBAR remote control
+      selector:
+        device:
+          integration: zha
+          manufacturer: IKEA of Sweden
+          model: Remote Control N2
+          multiple: false
+    
+    helper_last_button:
+      name: Helper - Last Button Tracker
+      description: |
+        Select a text input helper to track button state.
+        Create one first: Settings > Helpers > Text (max length: 20)
+      selector:
+        entity:
+          domain: input_text
+          multiple: false
+    
+    # ========================================
+    # ON BUTTON ACTIONS
+    # ========================================
+    on_button_short_press:
+      name: ON Button - Short Press
+      description: Action to run when ON button is pressed briefly
+      default: []
+      selector:
+        action: {}
+    
+    on_button_long_press:
+      name: ON Button - Long Press (Hold Start)
+      description: |
+        Action to run when ON button is held down.
+        Useful for starting dimming up or continuous actions.
+      default: []
+      selector:
+        action: {}
+    
+    on_button_release:
+      name: ON Button - Release (After Hold)
+      description: Action to run when ON button is released after holding
+      default: []
+      selector:
+        action: {}
+    
+    # ========================================
+    # OFF BUTTON ACTIONS
+    # ========================================
+    off_button_short_press:
+      name: OFF Button - Short Press
+      description: Action to run when OFF button is pressed briefly
+      default: []
+      selector:
+        action: {}
+    
+    off_button_long_press:
+      name: OFF Button - Long Press (Hold Start)
+      description: |
+        Action to run when OFF button is held down.
+        Useful for starting dimming down or continuous actions.
+      default: []
+      selector:
+        action: {}
+    
+    off_button_release:
+      name: OFF Button - Release (After Hold)
+      description: Action to run when OFF button is released after holding
+      default: []
+      selector:
+        action: {}
+    
+    # ========================================
+    # LEFT BUTTON ACTIONS
+    # ========================================
+    left_button_short_press:
+      name: LEFT Button - Short Press
+      description: Action to run when LEFT button is pressed briefly
+      default: []
+      selector:
+        action: {}
+    
+    left_button_long_press:
+      name: LEFT Button - Long Press (Hold Confirmed)
+      description: |
+        Action to run when LEFT button hold is confirmed.
+        Note: There's a slight delay before this triggers due to firmware issues.
+      default: []
+      selector:
+        action: {}
+    
+    left_button_release:
+      name: LEFT Button - Release (After Hold)
+      description: Action to run when LEFT button is released after holding
+      default: []
+      selector:
+        action: {}
+    
+    # ========================================
+    # RIGHT BUTTON ACTIONS
+    # ========================================
+    right_button_short_press:
+      name: RIGHT Button - Short Press
+      description: Action to run when RIGHT button is pressed briefly
+      default: []
+      selector:
+        action: {}
+    
+    right_button_long_press:
+      name: RIGHT Button - Long Press (Hold Confirmed)
+      description: |
+        Action to run when RIGHT button hold is confirmed.
+        Note: There's a slight delay before this triggers due to firmware issues.
+      default: []
+      selector:
+        action: {}
+    
+    right_button_release:
+      name: RIGHT Button - Release (After Hold)
+      description: Action to run when RIGHT button is released after holding
+      default: []
+      selector:
+        action: {}
+
+mode: queued
+max_exceeded: silent
+max: 10
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote_device
+
+variables:
+  command: "{{ trigger.event.data.command }}"
+  args: "{{ trigger.event.data.args }}"
+  cluster_id: "{{ trigger.event.data.cluster_id }}"
+  helper_entity: !input helper_last_button
+
+action:
+  - choose:
+      # ============================================
+      # ON BUTTON - Short Press
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'on' and cluster_id == 6 and 
+                 states(helper_entity) not in ['left_holding', 'right_holding'] }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "on"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input on_button_short_press
+
+      # ============================================
+      # ON BUTTON - Long Press (Hold)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'move_with_on_off' }}"
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "on_holding"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input on_button_long_press
+
+      # ============================================
+      # ON BUTTON - Release after Hold
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'stop' and 
+                 states(helper_entity) == 'on_holding' }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "on"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input on_button_release
+
+      # ============================================
+      # OFF BUTTON - Short Press
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'off' }}"
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "off"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input off_button_short_press
+
+      # ============================================
+      # OFF BUTTON - Long Press (Hold)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'move' and args|length > 0 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "off_holding"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input off_button_long_press
+
+      # ============================================
+      # OFF BUTTON - Release after Hold
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'stop' and 
+                 states(helper_entity) == 'off_holding' }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "off"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input off_button_release
+
+      # ============================================
+      # LEFT BUTTON - Short Press
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'press' and args[0] == 257 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "left"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input left_button_short_press
+
+      # ============================================
+      # LEFT BUTTON - Detect Hold Start (spurious events)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'release' and args[0] == 0 and
+                 states(helper_entity) == 'left' }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "left_holding"
+
+      # ============================================
+      # LEFT BUTTON - Long Press (actual hold command)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'hold' and args[0] == 3329 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "left_holding"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input left_button_long_press
+
+      # ============================================
+      # LEFT BUTTON - Release after Hold
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'release' and args[0] != 0 and
+                 states(helper_entity) == 'left_holding' }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "left"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input left_button_release
+
+      # ============================================
+      # RIGHT BUTTON - Short Press
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'press' and args[0] == 256 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "right"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input right_button_short_press
+
+      # ============================================
+      # RIGHT BUTTON - Detect Hold Start (spurious events)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'release' and args[0] == 0 and
+                 states(helper_entity) == 'right' }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "right_holding"
+
+      # ============================================
+      # RIGHT BUTTON - Long Press (actual hold command)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'hold' and args[0] == 3328 }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "right_holding"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input right_button_long_press
+
+      # ============================================
+      # RIGHT BUTTON - Release after Hold
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'release' and args[0] != 0 and
+                 states(helper_entity) == 'right_holding' }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_button
+            data:
+              value: "right"
+          - choose:
+              - conditions: "{{ true }}"
+                sequence: !input right_button_release
