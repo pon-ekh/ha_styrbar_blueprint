@@ -186,7 +186,6 @@ action:
                   target: !input target_lights
                   data:
                     brightness_step_pct: "{{ dim_step }}"
-                    transition: "{{ dim_delay_ms / 1000 }}"
                 - delay:
                     milliseconds: "{{ dim_delay_ms }}"
 
@@ -219,7 +218,6 @@ action:
                   target: !input target_lights
                   data:
                     brightness_step_pct: "{{ 0 - dim_step }}"
-                    transition: "{{ dim_delay_ms / 1000 }}"
                 - delay:
                     milliseconds: "{{ dim_delay_ms }}"
 
