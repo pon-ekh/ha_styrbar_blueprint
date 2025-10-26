@@ -1,0 +1,234 @@
+blueprint:
+  name: IKEA RODRET Remote - Simple Light Control
+  description: |
+    **Version: 1.0.0** | Last Updated: 2025-10-25
+    
+    Simple plug-and-play IKEA RODRET remote for controlling dimmable lights.
+    Just select your remote, your lights, and you're done!
+    
+    **Features:**
+    - Single press ON/OFF
+    - Hold to dim up/down smoothly
+    - Double-click ON for instant 100% brightness
+    
+    **No helpers required!**
+    
+  domain: automation
+  source_url: https://github.com/pon-ekh/ha_styrbar_blueprint/blob/main/rodret_simple.yaml
+
+  input:
+    remote_device:
+      name: RODRET Remote
+      description: Select your IKEA RODRET remote control
+      selector:
+        device:
+          integration: zha
+          manufacturer: IKEA of Sweden
+          multiple: false
+    
+    target_lights:
+      name: Target Lights
+      description: Select one or more lights to control
+      selector:
+        target:
+          entity:
+            domain: light
+
+    # ========================================
+    # DIMMING SETTINGS
+    # ========================================
+    dim_step_pct:
+      name: Dimming Step Percentage
+      description: How much to dim per step when holding button (1-20%)
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 1
+          unit_of_measurement: "%"
+    
+    dim_speed:
+      name: Dimming Speed
+      description: How fast to dim (delay between steps)
+      default: 200
+      selector:
+        number:
+          min: 50
+          max: 500
+          step: 50
+          unit_of_measurement: "ms"
+    
+    turn_on_transition:
+      name: Turn On Transition
+      description: Fade-in time when turning on (seconds)
+      default: 0.5
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.1
+          unit_of_measurement: "s"
+    
+    turn_off_transition:
+      name: Turn Off Transition
+      description: Fade-out time when turning off (seconds)
+      default: 0.5
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.1
+          unit_of_measurement: "s"
+
+    # ========================================
+    # DOUBLE CLICK SETTINGS
+    # ========================================
+    enable_double_click:
+      name: Enable Double Click for 100%
+      description: Double-click ON button to instantly set lights to 100%
+      default: true
+      selector:
+        boolean: {}
+    
+    double_click_timeout:
+      name: Double Click Timeout
+      description: Maximum time between clicks (milliseconds)
+      default: 500
+      selector:
+        number:
+          min: 200
+          max: 1000
+          step: 50
+          unit_of_measurement: "ms"
+    
+    double_click_transition:
+      name: Double Click Transition
+      description: Transition time when going to 100% (seconds)
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.1
+          unit_of_measurement: "s"
+
+# ================================================
+# AUTOMATION LOGIC
+# ================================================
+mode: restart
+max_exceeded: silent
+
+variables:
+  enable_double_click: !input enable_double_click
+  double_click_timeout_ms: !input double_click_timeout
+  dim_step: !input dim_step_pct
+  dim_delay_ms: !input dim_speed
+  turn_on_trans: !input turn_on_transition
+  turn_off_trans: !input turn_off_transition
+  double_trans: !input double_click_transition
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote_device
+    id: zha_event
+
+action:
+  - variables:
+      command: "{{ trigger.event.data.command }}"
+      args: "{{ trigger.event.data.args }}"
+
+  - choose:
+      # ============================================
+      # ON BUTTON - Short Press (with double-click detection)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'on' }}"
+        sequence:
+          - if:
+              # Check if this is a double-click
+              - condition: template
+                value_template: >
+                  {{ enable_double_click and 
+                     this.attributes.current > 0 and
+                     (now() - this.attributes.last_triggered).total_seconds() < (double_click_timeout_ms / 1000) }}
+            then:
+              # DOUBLE CLICK - Set to 100%
+              - service: light.turn_on
+                target: !input target_lights
+                data:
+                  brightness_pct: 100
+                  transition: "{{ double_trans }}"
+            else:
+              # SINGLE CLICK - Turn on
+              - service: light.turn_on
+                target: !input target_lights
+                data:
+                  transition: "{{ turn_on_trans }}"
+
+      # ============================================
+      # ON BUTTON - Hold (Dim Up)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'move_with_on_off' and args|length > 0 }}
+        sequence:
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ true }}"
+              sequence:
+                - service: light.turn_on
+                  target: !input target_lights
+                  data:
+                    brightness_step_pct: "{{ dim_step }}"
+                    transition: "{{ dim_delay_ms / 1000 }}"
+                - delay:
+                    milliseconds: "{{ dim_delay_ms }}"
+
+      # ============================================
+      # OFF BUTTON - Short Press
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'off' }}"
+        sequence:
+          - service: light.turn_off
+            target: !input target_lights
+            data:
+              transition: "{{ turn_off_trans }}"
+
+      # ============================================
+      # OFF BUTTON - Hold (Dim Down)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command == 'move' and args|length > 0 }}
+        sequence:
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ true }}"
+              sequence:
+                - service: light.turn_on
+                  target: !input target_lights
+                  data:
+                    brightness_step_pct: "{{ 0 - dim_step }}"
+                    transition: "{{ dim_delay_ms / 1000 }}"
+                - delay:
+                    milliseconds: "{{ dim_delay_ms }}"
+
+      # ============================================
+      # STOP DIMMING (Release)
+      # ============================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ command in ['stop_with_on_off', 'stop'] }}
+        sequence:
+          - stop: "Dimming stopped"
