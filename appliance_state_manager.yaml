@@ -5,9 +5,7 @@ blueprint:
     Works with washing machines, dryers, dishwashers, and similar appliances.
     
     
-    REQUIREMENTS:
-    You must create an input_select entity for each appliance with these exact options:
-    Off, Running, Done
+    REQUIREMENTS: You must create an input_select entity for each appliance with these exact options: Off, Running, Done
     
     
     Example configuration (add to your configuration.yaml):
@@ -16,10 +14,10 @@ blueprint:
       washing_machine_state:
         name: Washing Machine State
         options:
-          - "Off"
+          - Off
           - Running
           - Done
-        initial: "Off"
+        initial: Off
     
     
     After adding the input_select, restart Home Assistant before creating the automation.
@@ -35,15 +33,15 @@ blueprint:
     
     state_input_select:
       name: State Input Select
-      description: The input_select entity that tracks the appliance state (must have options "Off", "Running", "Done")
+      description: The input_select entity that tracks the appliance state (must have options Off, Running, Done)
       selector:
         entity:
           domain: input_select
     
     appliance_name:
       name: Appliance Name
-      description: Name of the appliance for notifications (e.g., "Washer", "Dryer", "Dishwasher")
-      default: "Appliance"
+      description: Name of the appliance for notifications (e.g., Washer, Dryer, Dishwasher)
+      default: Appliance
       selector:
         text:
     
@@ -108,28 +106,25 @@ blueprint:
     
     custom_notification_message:
       name: Custom Notification Message (Optional)
-      description: Custom message (leave empty to use default "[Appliance Name] is done")
+      description: Custom message (leave empty to use default appliance name is done)
       default: ""
       selector:
         text:
           multiline: true
 
 triggers:
-  # Trigger when power goes above threshold (starting)
   - trigger: numeric_state
     entity_id: !input power_sensor
     above: !input power_threshold
     for: !input power_on_delay
     id: power_on
   
-  # Trigger when power goes below threshold (finished)
   - trigger: numeric_state
     entity_id: !input power_sensor
     below: !input power_threshold
     for: !input power_off_delay
     id: power_off
   
-  # Trigger when state changes to Done (for auto-reset)
   - trigger: state
     entity_id: !input state_input_select
     to: Done
@@ -140,13 +135,12 @@ conditions: []
 
 actions:
   - choose:
-      # Handle power turning on -> Set to Running
       - conditions:
           - condition: trigger
             id: power_on
           - condition: state
             entity_id: !input state_input_select
-            state: "Off"
+            state: Off
         sequence:
           - action: input_select.select_option
             data:
@@ -154,7 +148,6 @@ actions:
             target:
               entity_id: !input state_input_select
       
-      # Handle power turning off -> Set to Done and notify
       - conditions:
           - condition: trigger
             id: power_off
@@ -189,14 +182,13 @@ actions:
                             {{ title }}
                           {% endif %}
       
-      # Handle Done timeout -> Reset to Off
       - conditions:
           - condition: trigger
             id: done_timeout
         sequence:
           - action: input_select.select_option
             data:
-              option: "Off"
+              option: Off
             target:
               entity_id: !input state_input_select
 
