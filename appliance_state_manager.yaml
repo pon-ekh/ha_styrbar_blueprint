@@ -1,0 +1,203 @@
+blueprint:
+  name: Appliance State Manager (Power-Based)
+  description: |
+    Manages appliance states (Off -> Running -> Done -> Off) based on power consumption. 
+    Works with washing machines, dryers, dishwashers, and similar appliances.
+    
+    **REQUIREMENTS:**
+    You must create an input_select entity for each appliance with these exact options:
+    - Off
+    - Running
+    - Done
+    
+    Example configuration (add to your configuration.yaml):
+```
+    input_select:
+      washing_machine_state:
+        name: Washing Machine State
+        options:
+          - "Off"
+          - Running
+          - Done
+        initial: "Off"
+```
+    
+    After adding the input_select, restart Home Assistant before creating the automation.
+  domain: automation
+  input:
+    power_sensor:
+      name: Power Sensor
+      description: The power sensor that monitors the appliance
+      selector:
+        entity:
+          domain: sensor
+          device_class: power
+    
+    state_input_select:
+      name: State Input Select
+      description: The input_select entity that tracks the appliance state (must have options "Off", "Running", "Done")
+      selector:
+        entity:
+          domain: input_select
+    
+    appliance_name:
+      name: Appliance Name
+      description: Name of the appliance for notifications (e.g., "Washer", "Dryer", "Dishwasher")
+      default: "Appliance"
+      selector:
+        text:
+    
+    power_threshold:
+      name: Power Threshold
+      description: Power level (W) above which the appliance is considered running
+      default: 1
+      selector:
+        number:
+          min: 0.1
+          max: 100
+          step: 0.1
+          unit_of_measurement: W
+    
+    power_on_delay:
+      name: Power On Delay
+      description: How long power must be above threshold before marking as Running
+      default:
+        minutes: 1
+      selector:
+        duration:
+    
+    power_off_delay:
+      name: Power Off Delay
+      description: How long power must be below threshold before marking as Done
+      default:
+        minutes: 1
+        seconds: 30
+      selector:
+        duration:
+    
+    done_timeout:
+      name: Done Timeout
+      description: How long to wait in Done state before resetting to Off
+      default:
+        minutes: 1
+      selector:
+        duration:
+    
+    enable_notifications:
+      name: Enable Notifications
+      description: Send notifications when the appliance is done
+      default: true
+      selector:
+        boolean:
+    
+    notify_devices:
+      name: Notification Devices
+      description: Mobile devices to notify when cycle is complete
+      default: []
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
+    
+    notification_title:
+      name: Notification Title (Optional)
+      description: Title for the notification (leave empty for message only)
+      default: ""
+      selector:
+        text:
+    
+    custom_notification_message:
+      name: Custom Notification Message (Optional)
+      description: Custom message (leave empty to use default "[Appliance Name] is done")
+      default: ""
+      selector:
+        text:
+          multiline: true
+
+triggers:
+  # Trigger when power goes above threshold (starting)
+  - trigger: numeric_state
+    entity_id: !input power_sensor
+    above: !input power_threshold
+    for: !input power_on_delay
+    id: power_on
+  
+  # Trigger when power goes below threshold (finished)
+  - trigger: numeric_state
+    entity_id: !input power_sensor
+    below: !input power_threshold
+    for: !input power_off_delay
+    id: power_off
+  
+  # Trigger when state changes to Done (for auto-reset)
+  - trigger: state
+    entity_id: !input state_input_select
+    to: Done
+    for: !input done_timeout
+    id: done_timeout
+
+conditions: []
+
+actions:
+  - choose:
+      # Handle power turning on -> Set to Running
+      - conditions:
+          - condition: trigger
+            id: power_on
+          - condition: state
+            entity_id: !input state_input_select
+            state: "Off"
+        sequence:
+          - action: input_select.select_option
+            data:
+              option: Running
+            target:
+              entity_id: !input state_input_select
+      
+      # Handle power turning off -> Set to Done and notify
+      - conditions:
+          - condition: trigger
+            id: power_off
+          - condition: state
+            entity_id: !input state_input_select
+            state: Running
+        sequence:
+          - action: input_select.select_option
+            data:
+              option: Done
+            target:
+              entity_id: !input state_input_select
+          - if:
+              - condition: template
+                value_template: !input enable_notifications
+            then:
+              - repeat:
+                  for_each: !input notify_devices
+                  sequence:
+                    - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                      data:
+                        message: >
+                          {% set custom_msg = !input custom_notification_message %}
+                          {% if custom_msg | trim != "" %}
+                            {{ custom_msg }}
+                          {% else %}
+                            {{ !input appliance_name }} is done
+                          {% endif %}
+                        title: >
+                          {% set title = !input notification_title %}
+                          {% if title | trim != "" %}
+                            {{ title }}
+                          {% endif %}
+      
+      # Handle Done timeout -> Reset to Off
+      - conditions:
+          - condition: trigger
+            id: done_timeout
+        sequence:
+          - action: input_select.select_option
+            data:
+              option: "Off"
+            target:
+              entity_id: !input state_input_select
+
+mode: single
