@@ -133,14 +133,19 @@ triggers:
 
 conditions: []
 
+variables:
+  state_entity: !input state_input_select
+  appliance_name: !input appliance_name
+  notification_title: !input notification_title
+  custom_notification_message: !input custom_notification_message
+
 actions:
   - choose:
       - conditions:
           - condition: trigger
             id: power_on
-          - condition: state
-            entity_id: !input state_input_select
-            state: "Off"
+          - condition: template
+            value_template: "{{ states(state_entity) == 'Off' }}"
         sequence:
           - action: input_select.select_option
             data:
@@ -151,9 +156,8 @@ actions:
       - conditions:
           - condition: trigger
             id: power_off
-          - condition: state
-            entity_id: !input state_input_select
-            state: "Running"
+          - condition: template
+            value_template: "{{ states(state_entity) == 'Running' }}"
         sequence:
           - action: input_select.select_option
             data:
@@ -183,7 +187,3 @@ actions:
               entity_id: !input state_input_select
 
 mode: single
-variables:
-  appliance_name: !input appliance_name
-  notification_title: !input notification_title
-  custom_notification_message: !input custom_notification_message
