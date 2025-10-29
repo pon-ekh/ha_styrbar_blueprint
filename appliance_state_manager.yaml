@@ -167,20 +167,10 @@ actions:
               - repeat:
                   for_each: !input notify_devices
                   sequence:
-                    - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                    - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
                       data:
-                        message: >
-                          {% set custom_msg = !input custom_notification_message %}
-                          {% if custom_msg | trim != "" %}
-                            {{ custom_msg }}
-                          {% else %}
-                            {{ !input appliance_name }} is done
-                          {% endif %}
-                        title: >
-                          {% set title = !input notification_title %}
-                          {% if title | trim != "" %}
-                            {{ title }}
-                          {% endif %}
+                        message: "{% set custom_msg = custom_notification_message %}{% if custom_msg | trim != '' %}{{ custom_msg }}{% else %}{{ appliance_name }} is done{% endif %}"
+                        title: "{% set title = notification_title %}{% if title | trim != '' %}{{ title }}{% endif %}"
       
       - conditions:
           - condition: trigger
@@ -193,3 +183,7 @@ actions:
               entity_id: !input state_input_select
 
 mode: single
+variables:
+  appliance_name: !input appliance_name
+  notification_title: !input notification_title
+  custom_notification_message: !input custom_notification_message
