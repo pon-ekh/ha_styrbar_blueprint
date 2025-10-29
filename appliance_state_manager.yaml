@@ -140,7 +140,7 @@ actions:
             id: power_on
           - condition: state
             entity_id: !input state_input_select
-            state: Off
+            state: "Off"
         sequence:
           - action: input_select.select_option
             data:
@@ -153,7 +153,7 @@ actions:
             id: power_off
           - condition: state
             entity_id: !input state_input_select
-            state: Running
+            state: "Running"
         sequence:
           - action: input_select.select_option
             data:
@@ -178,7 +178,7 @@ actions:
         sequence:
           - action: input_select.select_option
             data:
-              option: Off
+              option: "Off"
             target:
               entity_id: !input state_input_select
 
