@@ -1,17 +1,17 @@
 blueprint:
   name: Appliance State Manager (Power-Based)
-  description: |
+  description: >
     Manages appliance states (Off -> Running -> Done -> Off) based on power consumption. 
     Works with washing machines, dryers, dishwashers, and similar appliances.
     
-    **REQUIREMENTS:**
+    
+    REQUIREMENTS:
     You must create an input_select entity for each appliance with these exact options:
-    - Off
-    - Running
-    - Done
+    Off, Running, Done
+    
     
     Example configuration (add to your configuration.yaml):
-```
+    
     input_select:
       washing_machine_state:
         name: Washing Machine State
@@ -20,7 +20,7 @@ blueprint:
           - Running
           - Done
         initial: "Off"
-```
+    
     
     After adding the input_select, restart Home Assistant before creating the automation.
   domain: automation
